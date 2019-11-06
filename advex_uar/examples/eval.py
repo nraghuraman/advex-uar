@@ -104,6 +104,7 @@ class BaseEvaluator():
                     seen_classes.append(target[idx].cpu())
                     orig_image = norm_to_pil_image(data[idx].detach().cpu())
                     adv_image = norm_to_pil_image(data_adv[idx].detach().cpu())
+
 # line added here
                     adv_image = applyTransforms(adv_image)
                     adv_images.update((orig_image, adv_image, target[idx].cpu()))
@@ -723,8 +724,7 @@ def nonlocalMeansDenoising(img):
   return img
 
 def applyTransforms(img):
-  img = img.numpy()
-  img = np.swapaxes(img, 0, 2)
+  img = np.array(img)
   allTransforms = [colorPrecisionReduction, jpegNoise, swirl, noiseInjection, fftPerturbation, alterHSV, alterXYZ, alterLAB, alterYUV, histogramEqualization, contrastStretching, greyScaleMix, greyScalePartialMix, greyScaleMixTwoThirds, oneChannelPartialGrey, gaussianBlur, chambolleDenoising, nonlocalMeansDenoising]
   numTransforms = random.randint(0, 5)
   
