@@ -149,12 +149,13 @@ class BaseEvaluator():
 
 class CIFAR10Evaluator(BaseEvaluator):
     def _init_loaders(self):
-        normalize = transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD)
+        # normalize = transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD)
         self.val_dataset = datasets.CIFAR10(
                 root='./', download=True, train=False,
                 transform=transforms.Compose([
-                        transforms.ToTensor(),
-                        normalize,]))
+                        # transforms.ToTensor(),
+                        # normalize,]))
+                        transforms.ToTensor()]))
         self.val_loader = torch.utils.data.DataLoader(
                 self.val_dataset, batch_size=self.batch_size,
                 shuffle=False, num_workers=8, pin_memory=True)
