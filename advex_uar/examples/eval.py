@@ -606,7 +606,7 @@ def alterYUV(img):
   img = np.clip(img, 0, 1.0)
   return img
 
-## Contrast Group Below
+## Grey Scale Group Below
 def greyScaleMix(img):
   # average of color channels, different contribution for each channel
   ratios = np.random.rand(3)
