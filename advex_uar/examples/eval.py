@@ -260,7 +260,7 @@ class LambdaLayer(nn.Module):
     def forward(self, x):
         return self.lambd(x)
 
-
+# This ResNet50 archiecture was obtained from https://github.com/pytorch/vision/blob/master/torchvision/models/resnet.py
 class BasicBlock(nn.Module):
     expansion = 1
 
@@ -440,7 +440,8 @@ def run(**flag_kwargs):
 
 
 
-# The below code was taken from the appendix of our nearest neighbor BaRT paper.
+# The below code was taken from the appendix of the paper "Barrage of Random Transforms for Adversarially Robust Defense"
+# This paper can be found at this link: http://openaccess.thecvf.com/content_CVPR_2019/papers/Raff_Barrage_of_Random_Transforms_for_Adversarially_Robust_Defense_CVPR_2019_paper.pdf.
 
 import numpy as np
 import random
@@ -605,29 +606,7 @@ def alterYUV(img):
   img = np.clip(img, 0, 1.0)
   return img
 
-## Contrast Group Below
-def histogramEqualization(img):
-  nbins = np.random.random_integers(40, 256)
-  params = [ nbins/256.0 ]
-  for i in range(3):
-    img[:,:,i] = skimage.exposure.equalize_hist(img[:,:,i], nbins=nbins)
-  return img
-
-def contrastStretching(img):
-  per_channel = np.random.choice(2) == 0
-  params = [ per_channel ]
-  low_precentile = [ randUnifC(0.01, 0.04, params=params) for x in range(3)]
-  hi_precentile = [ randUnifC(0.96, 0.99, params=params) for x in range(3)]
-  if per_channel:
-    for i in range(3):
-      p2, p98 = np.percentile(img[:,:,i], (low_precentile[i]*100, hi_precentile[i]*100))
-      img[:,:,i] = skimage.exposure.rescale_intensity(
-      img[:,:,i], in_range=(p2, p98))
-  else:
-    p2, p98 = np.percentile(img, (low_precentile[0] * 100, hi_precentile[0]*100))
-    img = skimage.exposure.rescale_intensity( img, in_range=(p2, p98) )
-  return img
-
+## Grey Scale Group Below
 def greyScaleMix(img):
   # average of color channels, different contribution for each channel
   ratios = np.random.rand(3)
@@ -726,7 +705,7 @@ def nonlocalMeansDenoising(img):
 
 def applyTransforms(img):
   img = np.array(img)
-  allTransforms = [colorPrecisionReduction, jpegNoise, swirl, noiseInjection, fftPerturbation, alterHSV, alterXYZ, alterLAB, alterYUV, histogramEqualization, contrastStretching, greyScaleMix, greyScalePartialMix, greyScaleMixTwoThirds, oneChannelPartialGrey, gaussianBlur, chambolleDenoising, nonlocalMeansDenoising]
+  allTransforms = [colorPrecisionReduction, jpegNoise, swirl, noiseInjection, fftPerturbation, alterHSV, alterXYZ, alterLAB, alterYUV, greyScaleMix, greyScalePartialMix, greyScaleMixTwoThirds, oneChannelPartialGrey, gaussianBlur, chambolleDenoising, nonlocalMeansDenoising]
   numTransforms = random.randint(0, 5)
   
   for i in range(numTransforms):
