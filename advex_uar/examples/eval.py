@@ -453,25 +453,15 @@ from scipy import fftpack
 
 # Helper functions for some transforms
 def randUnifC(low, high, params=None):
-  p = np.random.uniform()
+  p = 0.75
   if params is not None:
     params.append(p)
   return (high-low)*p + low
 
-def randUnifI(low, high, params=None):
-  p = np.random.uniform()
-  if params is not None:
-    params.append(p)
-  return round((high-low)*p + low)
-
-def randLogUniform(low, high, base=np.exp(1)):
-  div = np.log(base)
-  return base**np.random.uniform(np.log(low)/div, np.log(high)/div)
-
 ##### TRANSFORMS BELOW #####
 def colorPrecisionReduction(img):
-  scales = [np.asscalar(np.random.random_integers(8, 200)) for x in range(3)]
-  multi_channel = np.random.choice(2) == 0
+  scales = [np.asscalar(100) for x in range(3)]
+  multi_channel = True
   params = [multi_channel] + [s/200.0 for s in scales]
   
   if multi_channel:
@@ -483,7 +473,7 @@ def colorPrecisionReduction(img):
   return img
 
 def jpegNoise(img):
-  quality = np.asscalar(np.random.random_integers(55, 95))
+  quality = np.asscalar(60)
   params = [quality/100.0]
   pil_image = PIL.Image.fromarray((img*255.0).astype(np.uint8))
   f = BytesIO()
@@ -492,59 +482,12 @@ def jpegNoise(img):
   return jpeg_image
 
 def swirl(img):
-  strength = (2.0-0.01)*np.random.random(1)[0] + 0.01
-  c_x = np.random.random_integers(1, 256)
-  c_y = np.random.random_integers(1, 256)
-  radius = np.random.random_integers(10, 200)
+  strength = (2.0-0.01)*0.5 + 0.01
+  c_x = 128
+  c_y = 128
+  radius = 128
   params = [strength/2.0, c_x/256.0, c_y/256.0, radius/200.0]
   img = skimage.transform.swirl(img, rotation=0, strength=strength, radius=radius, center=(c_x, c_y))
-  return img
-
-def noiseInjection(img):
-  params = []
-  # average of color channels, different contribution for each channel
-  options = ['gaussian', 'poisson', 'salt', 'pepper','s&p', 'speckle']
-  noise_type = np.random.choice(options, 1)[0]
-  params.append(options.index(noise_type)/6.0)
-  per_channel = np.random.choice(2) == 0
-  params.append( per_channel )
-  if per_channel:
-    for i in range(3):
-      img[:,:,i] = skimage.util.random_noise(img[:,:,i], mode=noise_type )
-  else:
-    img = skimage.util.random_noise( img,mode=noise_type )
-  return img
-
-def fftPerturbation(img):
-  r, c, _ = img.shape
-  #Everyone gets the same factor to avoid too many weird artifacts
-  point_factor = (1.02-0.98)*np.random.random((r,c)) + 0.98
-  randomized_mask = [np.random.choice(2)==0 for x in range(3)]
-  keep_fraction = [(0.95-0.0)*np.random.random(1)[0] + 0.0 for x in range(3)]
-  params = randomized_mask + keep_fraction
-  for i in range(3):
-    im_fft = fftpack.fft2(img[:,:,i])
-    # Set r and c to be the number of rows and columns of the array.
-    r, c = im_fft.shape
-    if randomized_mask[i]:
-      mask = np.ones(im_fft.shape[:2]) > 0
-      im_fft[int(r*keep_fraction[i]):int(r*(1-keep_fraction[i]))] = 0
-      im_fft[:, int(c*keep_fraction[i]):int(c*(1-keep_fraction[i]))] = 0
-      mask = ~mask
-      #Now things to keep = 0, things to remove = 1
-      mask = mask * ~(np.random.uniform(size=im_fft.shape[:2] ) < keep_fraction[i])
-      #Now switch back
-      mask = ~mask
-      im_fft = np.multiply(im_fft, mask)
-    else:
-      im_fft[int(r*keep_fraction[i]):int(r*(1-keep_fraction[i]))] = 0
-      im_fft[:, int(c*keep_fraction[i]):int(c*(1-keep_fraction[i]))] = 0
-      #Now, lets perturb all the rest of the non-zero values by a relative factor
-      im_fft = np.multiply(im_fft, point_factor)
-      im_new = fftpack.ifft2(im_fft).real
-      #FFT inverse may no longer produce exact same range, so clip it back
-      im_new = np.clip(im_new, 0, 1)
-      img[:,:,i] = im_new
   return img
 
 ## Color Space Group Below
@@ -562,54 +505,10 @@ def alterHSV(img):
   img = np.clip(img, 0, 1.0)
   return img
 
-def alterXYZ(img):
-  img = color.rgb2xyz(img)
-  params = []
-  #X
-  img[:,:,0] += randUnifC(-0.05, 0.05, params=params)
-  #Y
-  img[:,:,1] += randUnifC(-0.05, 0.05, params=params)
-  #Z
-  img[:,:,2] += randUnifC(-0.05, 0.05, params=params)
-  img = np.clip(img, 0, 1.0)
-  img = color.xyz2rgb(img)
-  img = np.clip(img, 0, 1.0)
-  return img
-
-def alterLAB(img):
-  img = color.rgb2lab(img)
-  params = []
-  #L
-  img[:,:,0] += randUnifC(-5.0, 5.0, params=params)
-  #a
-  img[:,:,1] += randUnifC(-2.0, 2.0, params=params)
-  #b
-  img[:,:,2] += randUnifC(-2.0, 2.0, params=params)
-  # L 2 [0,100] so clip it; a & b channels can have,! negative values.
-  img[:,:,0] = np.clip(img[:,:,0], 0, 100.0)
-  img = color.lab2rgb(img)
-  img = np.clip(img, 0, 1.0)
-  return img
-
-def alterYUV(img):
-  img = color.rgb2yuv(img)
-  params = []
-  #Y
-  img[:,:,0] += randUnifC(-0.05, 0.05, params=params)
-  #U
-  img[:,:,1] += randUnifC(-0.02, 0.02, params=params)
-  #V
-  img[:,:,2] += randUnifC(-0.02, 0.02, params=params)
-  # U & V channels can have negative values; clip only Y
-  img[:,:,0] = np.clip(img[:,:,0], 0, 1.0)
-  img = color.yuv2rgb(img)
-  img = np.clip(img, 0, 1.0)
-  return img
-
 ## Grey Scale Group Below
 def greyScaleMix(img):
   # average of color channels, different contribution for each channel
-  ratios = np.random.rand(3)
+  ratios = np.array([0.70093783,  0.29779764,  0.37861929])
   ratios /= ratios.sum()
   params = [x for x in ratios]
   img_g = img[:,:,0] * ratios[0] + img[:,:,1] * ratios[1] + img[:,:,2] * ratios[2]
@@ -617,101 +516,12 @@ def greyScaleMix(img):
     img[:,:,i] = img_g
   return img
 
-def greyScalePartialMix(img):
-  ratios = np.random.rand(3)
-  ratios/=ratios.sum()
-  prop_ratios = np.random.rand(3)
-  params = [x for x in ratios] + [x for x in prop_ratios]
-  img_g = img[:,:,0] * ratios[0] + img[:,:,1] * ratios[1] + img[:,:,2] * ratios[2]
-  for i in range(3):
-    p = max(prop_ratios[i], 0.2)
-    img[:,:,i] = img[:,:,i]*p + img_g*(1.0-p)
-  return img
-
-def greyScaleMixTwoThirds(img):
-  params = []
-  # Pick a channel that will be left alone and remove it from the ones to be averaged
-  channels = [0, 1, 2]
-  remove_channel = np.random.choice(3)
-  channels.remove( remove_channel)
-  params.append( remove_channel )
-  ratios = np.random.rand(2)
-  ratios/=ratios.sum()
-  params.append(ratios[0]) #They sum to one, so first item fully specifies the group
-  img_g = img[:,:,channels[0]] * ratios[0] + img[:,:,channels[1]] * ratios[1]
-  for i in channels:
-    img[:,:,i] = img_g
-  return img
-
-def oneChannelPartialGrey(img):
-  params = []
-  # Pick a channel that will be altered and remove it from the ones to be averaged
-  channels = [0, 1, 2]
-  to_alter = np.random.choice(3)
-  channels.remove(to_alter)
-  params.append(to_alter)
-  ratios = np.random.rand(2)
-  ratios/=ratios.sum()
-  params.append(ratios[0]) #They sum to one, so first item fully specifies the group
-  img_g = img[:,:,channels[0]] * ratios[0] + img[:,:,channels[1]] * ratios[1]
-  # Lets mix it back in with the original channel
-  p = (0.9-0.1)*np.random.random(1)[0] + 0.1
-  params.append( p )
-  img[:,:,to_alter] = img_g*p + img[:,:,to_alter] *(1.0-p)
-  return img
-
-## Denoising Group
-def gaussianBlur(img):
-  if randUnifC(0, 1) > 0.5:
-    sigma = [randUnifC(0.1, 3)]*3
-  else:
-    sigma = [randUnifC(0.1, 3), randUnifC(0.1, 3), randUnifC(0.1, 3)]
-    img[:,:,0] = skimage.filters.gaussian(img[:,:,0], sigma=sigma[0])
-    img[:,:,1] = skimage.filters.gaussian(img[:,:,1], sigma=sigma[1])
-    img[:,:,2] = skimage.filters.gaussian(img[:,:,2], sigma=sigma[2])
-  return img
-
-def chambolleDenoising(img):
-  params = []
-  weight = (0.25-0.05)*np.random.random(1)[0] + 0.05
-  params.append( weight )
-  multi_channel = np.random.choice(2) == 0
-  params.append( multi_channel )
-  img = skimage.restoration.denoise_tv_chambolle( img, weight=weight, multichannel=multi_channel)
-  return img
-
-def nonlocalMeansDenoising(img):
-  h_1 = randUnifC(0, 1)
-  params = [h_1]
-  sigma_est = np.mean(skimage.restoration.estimate_sigma(img,multichannel=True) )
-  h = (1.15-0.6)*sigma_est*h_1 + 0.6*sigma_est
-  #If false, it assumes some weird 3D stuff
-  multi_channel = np.random.choice(2) == 0
-  params.append( multi_channel )
-  #Takes too long to run without fast mode.
-  fast_mode = True
-  patch_size = np.random.random_integers(5, 7)
-  params.append(patch_size)
-  patch_distance = np.random.random_integers(6, 11)
-  params.append(patch_distance)
-  if multi_channel:
-    img = skimage.restoration.denoise_nl_means( img,h=h, patch_size=patch_size,patch_distance=patch_distance,fast_mode=fast_mode )
-  else:
-    for i in range(3):
-      sigma_est = np.mean(skimage.restoration.estimate_sigma(img[:,:,i], multichannel=True ) )
-      h = (1.15-0.6)*sigma_est*params[i] + 0.6*sigma_est
-      img[:,:,i] = skimage.restoration.denoise_nl_means(img[:,:,i], h=h, patch_size=patch_size, patch_distance=patch_distance, fast_mode=fast_mode )
-  return img
-
 def applyTransforms(img):
   img = np.array(img)
-  allTransforms = [colorPrecisionReduction, jpegNoise, swirl, noiseInjection, fftPerturbation, alterHSV, alterXYZ, alterLAB, alterYUV, greyScaleMix, greyScalePartialMix, greyScaleMixTwoThirds, oneChannelPartialGrey, gaussianBlur, chambolleDenoising, nonlocalMeansDenoising]
-  numTransforms = random.randint(0, 5)
-  
-  for i in range(numTransforms):
-      transform = random.choice(allTransforms)
+  allTransforms = [colorPrecisionReduction, jpegNoise, swirl, alterHSV, greyScaleMix]
+
+  for transform in allTransforms:
       img = transform(img)
-      allTransforms.remove(transform)
     
   img = np.swapaxes(img, 0, 2)
   return torch.from_numpy(img).float()
