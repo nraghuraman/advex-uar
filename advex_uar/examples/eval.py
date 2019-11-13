@@ -460,7 +460,7 @@ def randUnifC(low, high, params=None):
 
 ##### TRANSFORMS BELOW #####
 def colorPrecisionReduction(img):
-  scales = [np.asscalar(100) for x in range(3)]
+  scales = [100 for x in range(3)]
   multi_channel = True
   params = [multi_channel] + [s/200.0 for s in scales]
   
@@ -473,7 +473,7 @@ def colorPrecisionReduction(img):
   return img
 
 def jpegNoise(img):
-  quality = np.asscalar(60)
+  quality = 60
   params = [quality/100.0]
   pil_image = PIL.Image.fromarray((img*255.0).astype(np.uint8))
   f = BytesIO()
