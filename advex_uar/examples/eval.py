@@ -106,6 +106,7 @@ class BaseEvaluator():
                     adv_image = norm_to_pil_image(data_adv[idx].detach().cpu())
 
 # line added here
+                    orig_image = applyTransforms(orig_image)
                     adv_image = applyTransforms(adv_image)
                     adv_images.update((orig_image, adv_image, target[idx].cpu()))
 
