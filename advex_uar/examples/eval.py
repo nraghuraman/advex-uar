@@ -18,12 +18,18 @@ IMAGENET_MEAN = [0.485, 0.456, 0.406]
 IMAGENET_STD = [0.229, 0.224, 0.225]
 
 def norm_to_pil_image(img):
-    img_new = torch.Tensor(img)
-    for t, m, s in zip(img_new, IMAGENET_MEAN, IMAGENET_STD):
-        t.mul_(s).add_(m)
+    # Next three lines reverse normalization
+    #img_new = torch.Tensor(img)
+    img_new = reverse_normalization(img.clone().detach().cpu())
     img_new.mul_(255)
     np_img = np.rollaxis(np.uint8(img_new.numpy()), 0, 3)
     return Image.fromarray(np_img, mode='RGB')
+
+def reverse_normalization(img):
+    img_new = img.clone()
+    for t, m, s in zip(img_new, IMAGENET_MEAN, IMAGENET_STD):
+        t.mul_(s).add_(m)
+    return img_new
 
 class Accumulator(object):
     def __init__(self, name):
@@ -65,7 +71,7 @@ class BaseEvaluator():
 
     def _init_loaders(self):
         raise NotImplementedError
-        
+
     def evaluate(self):
         self.model.eval()
 
@@ -80,11 +86,31 @@ class BaseEvaluator():
         adv_images = Accumulator('adv_images')
         first_batch_images = Accumulator('first_batch_images')
 
-        for batch_idx, (data, target) in enumerate(self.val_loader):
+        from PIL import Image
+
+        for batch_idx, (data, target) in enumerate(self.val_loader[0]):
             if self.cuda:
                 data, target = data.cuda(non_blocking=True), target.cuda(non_blocking=True)
             with torch.no_grad():
-                output = self.model(data)
+                #output = self.model(data)
+                data_cpy = data.clone().detach()
+                std_cpy = data.clone().detach() # std_cpy is used for finding the standard accuracy and has transforms applied as normal
+                # data_cpy = torch.tensor([])
+                # std_cpy = torch.tensor([])
+                # for idx in range(len(data_cpy)):
+                #     #print("Tensor is cuda?", data_cpy.is_cuda)
+
+                #     data_cpy = torch.cat((data_cpy, torch.tensor(transforms.functional.normalize(transforms.functional.to_tensor(data[idx, :]), IMAGENET_MEAN, IMAGENET_STD)      )))
+                #     #std_cpy[idx] = transforms.functional.normalize(data[idx].clone().cpu(), IMAGENET_MEAN, IMAGENET_STD).cuda() # DELETE
+                #     transformedTensor = applyTransforms(np.copy(data[idx, :]))
+                #     std_cpy = torch.cat((std_cpy, torch.tensor(transforms.functional.normalize(transformedTensor.clone().cpu(), IMAGENET_MEAN, IMAGENET_STD))))
+                #     #std_cpy[idx, :] = transforms.functional.normalize(transformedTensor.cpu(), IMAGENET_MEAN, IMAGENET_STD).cuda()
+                #     transformedImage = norm_to_pil_image(np.array(std_cpy[idx, :].cpu()))
+                #     transformedImage.save('sample_data/standard' + str(idx) + '.png')
+                #     untransformedImage = norm_to_pil_image(np.array(data_cpy[idx, :].cpu()))
+                #     untransformedImage.save('sample_data/data' + str(idx) + '.png')
+                #     # print(np.array(data_cpy[idx].cpu()) - np.array(std_cpy[idx].cpu()))
+                output = self.model(std_cpy)
                 std_logits.update(output.cpu())
                 loss = F.cross_entropy(output, target, reduction='none').cpu()
                 std_loss.update(loss)
@@ -92,38 +118,93 @@ class BaseEvaluator():
                 corr = corr.view(corr.size()[0]).cpu()
                 std_corr.update(corr)
 
+            run_output = {'std_loss':std_loss.avg,
+                          'std_acc':std_corr.avg}
+            print('Standard Batch', batch_idx)
+            print(run_output)
+
+        for batch_idx, (data, target) in enumerate(self.val_loader[1]):
+
+
+            # data is normalized at this point
+
+            # print("Target size", target.size())
+            # print("Target datatype", target.dtype)
+            if self.cuda:
+                data, target = data.cuda(non_blocking=True), target.cuda(non_blocking=True)
+
+            # for idx in range(len(data)):
+            #     savedImage = norm_to_pil_image(data[idx])
+            #     savedImage.save("sample_data/eric" + str(idx) + '.png')
+
+
+            # with torch.no_grad():
+            #     #output = self.model(data)
+            #     data_cpy = data.clone().detach()
+            #     std_cpy = data.clone().detach() # std_cpy is used for finding the standard accuracy and has transforms applied as normal
+            #     # data_cpy = torch.tensor([])
+            #     # std_cpy = torch.tensor([])
+            #     # for idx in range(len(data_cpy)):
+            #     #     #print("Tensor is cuda?", data_cpy.is_cuda)
+
+            #     #     data_cpy = torch.cat((data_cpy, torch.tensor(transforms.functional.normalize(transforms.functional.to_tensor(data[idx, :]), IMAGENET_MEAN, IMAGENET_STD)      )))
+            #     #     #std_cpy[idx] = transforms.functional.normalize(data[idx].clone().cpu(), IMAGENET_MEAN, IMAGENET_STD).cuda() # DELETE
+            #     #     transformedTensor = applyTransforms(np.copy(data[idx, :]))
+            #     #     std_cpy = torch.cat((std_cpy, torch.tensor(transforms.functional.normalize(transformedTensor.clone().cpu(), IMAGENET_MEAN, IMAGENET_STD))))
+            #     #     #std_cpy[idx, :] = transforms.functional.normalize(transformedTensor.cpu(), IMAGENET_MEAN, IMAGENET_STD).cuda()
+            #     #     transformedImage = norm_to_pil_image(np.array(std_cpy[idx, :].cpu()))
+            #     #     transformedImage.save('sample_data/standard' + str(idx) + '.png')
+            #     #     untransformedImage = norm_to_pil_image(np.array(data_cpy[idx, :].cpu()))
+            #     #     untransformedImage.save('sample_data/data' + str(idx) + '.png')
+            #     #     # print(np.array(data_cpy[idx].cpu()) - np.array(std_cpy[idx].cpu()))
+            #     output_adv = self.model(data)
+            #     adv_logits.update(output_adv.cpu())
+            #     loss = F.cross_entropy(output_adv, target, reduction='none').cpu()
+            #     adv_loss.update(loss)
+            #     corr = correct(output_adv, target)
+            #     corr = corr.view(corr.size()[0]).cpu()
+            #     adv_corr.update(corr)
+
             rand_target = torch.randint(
                 0, self.nb_classes - 1, target.size(),
                 dtype=target.dtype, device='cuda')
             rand_target = torch.remainder(target + rand_target + 1, self.nb_classes)
+
+            from PIL import Image
             data_adv = self.attack(self.model, data, rand_target,
                                    avoid_target=False, scale_eps=False)
 
-            for idx in range(target.size()[0]):
-                if target[idx].cpu() not in seen_classes:
-                    seen_classes.append(target[idx].cpu())
-                    orig_image = norm_to_pil_image(data[idx].detach().cpu())
-                    adv_image = norm_to_pil_image(data_adv[idx].detach().cpu())
+            # for idx in range(len(data)):
+            #     savedImage = norm_to_pil_image(data_adv[idx])
+            #     savedImage.save("sample_data/eric" + str(idx) + '.png')
 
-# line added here
-                    orig_image = applyTransforms(orig_image)
-                    adv_image = applyTransforms(adv_image)
-                    adv_images.update((orig_image, adv_image, target[idx].cpu()))
 
-            if batch_idx == 0:
-                for idx in range(target.size()[0]):
-                    orig_image = norm_to_pil_image(data[idx].detach().cpu())
-                    adv_image = norm_to_pil_image(data_adv[idx].detach().cpu())
-                    first_batch_images.update((orig_image, adv_image))
-                
+            data_adv_cpy = data_adv.clone().detach()
+
+            for idx in range(len(data_adv_cpy)):
+                # savedImage = norm_to_pil_image(data_adv[idx])
+                # savedImage.save("sample_data/before_transforms" + str(idx) + '.png')
+                unnormalized = reverse_normalization(data_adv[idx])
+                changed = np.swapaxes(np.array(unnormalized.cpu().detach()) * 255.0, 0, 2)
+                # print(changed.shape)
+                # print(changed)
+
+                transformed = applyTransforms(np.swapaxes(np.array(unnormalized.cpu().clone().detach()) * 255.0, 0, 2))
+                data_adv_cpy[idx] = transforms.functional.normalize(transformed.clone().cpu(), IMAGENET_MEAN, IMAGENET_STD).cuda()
+
             with torch.no_grad():
-                output_adv = self.model(data_adv)
+                output_adv = self.model(data_adv_cpy)
                 adv_logits.update(output_adv.cpu())
                 loss = F.cross_entropy(output_adv, target, reduction='none').cpu()
                 adv_loss.update(loss)
                 corr = correct(output_adv, target)
                 corr = corr.view(corr.size()[0]).cpu()
                 adv_corr.update(corr)
+
+            # run_output = {'adv_loss':adv_loss.avg,
+            #               'adv_acc':adv_corr.avg}
+            # print('Adv Batch', batch_idx)
+            # print(run_output)
 
             run_output = {'std_loss':std_loss.avg,
                           'std_acc':std_corr.avg,
@@ -136,30 +217,60 @@ class BaseEvaluator():
 
         summary_dict = {'std_acc':std_corr.avg.item(),
                         'adv_acc':adv_corr.avg.item()}
-        self.logger.log_summary(summary_dict)
-        for orig_img, adv_img, target in adv_images.vals:
-            self.logger.log_image(orig_img, 'orig_{}.png'.format(target))
-            self.logger.log_image(adv_img, 'adv_{}.png'.format(target))
-        for idx, imgs in enumerate(first_batch_images.vals):
-            orig_img, adv_img = imgs
-            self.logger.log_image(orig_img, 'init_orig_{}.png'.format(idx))
-            self.logger.log_image(adv_img, 'init_adv_{}.png'.format(idx))
-
-        self.logger.end()
+        # self.logger.log_summary(summary_dict)
+        # for orig_img, adv_img, target in adv_images.vals:
+        #     self.logger.log_image(orig_img, 'orig_{}.png'.format(target))
+        #     self.logger.log_image(adv_img, 'adv_{}.png'.format(target))
+        # for idx, imgs in enumerate(first_batch_images.vals):
+        #     orig_img, adv_img = imgs
+        #     self.logger.log_image(orig_img, 'init_orig_{}.png'.format(idx))
+        #     self.logger.log_image(adv_img, 'init_adv_{}.png'.format(idx))
+        #
+        # self.logger.end()
         print(std_loss.avg, std_corr.avg, adv_loss.avg, adv_corr.avg)
 
 class CIFAR10Evaluator(BaseEvaluator):
     def _init_loaders(self):
-        # normalize = transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD)
+        normalize = transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD)
         self.val_dataset = datasets.CIFAR10(
                 root='./', download=True, train=False,
+                # transform=transforms.Compose([
+                #         # transforms.ToTensor(),
+                #         transforms.RandomHorizontalFlip(p=0.5),
+                #         #transforms.ToTensor()]))
+                #         np.array]))
+                #         #normalize]))
                 transform=transforms.Compose([
-                        # transforms.ToTensor(),
-                        # normalize,]))
-                        transforms.ToTensor()]))
-        self.val_loader = torch.utils.data.DataLoader(
-                self.val_dataset, batch_size=self.batch_size,
+                    transforms.RandomHorizontalFlip(p=0.5),
+                    transforms.RandomApply([applyTransforms], p=1),
+                    normalize]))
+        self.val_adv_dataset = datasets.CIFAR10(
+                root='./', download=True, train=False,
+                transform=transforms.Compose([
+                    transforms.RandomHorizontalFlip(p=0.5),
+                    transforms.ToTensor(),
+                    normalize]))
+        self.val_loader = [
+            torch.utils.data.DataLoader(
+                    self.val_dataset, batch_size=self.batch_size,
+                    shuffle=False, num_workers=8, pin_memory=True),
+            torch.utils.data.DataLoader(
+                self.val_adv_dataset, batch_size=self.batch_size,
                 shuffle=False, num_workers=8, pin_memory=True)
+        ]
+
+# def applyAdvTransforms(img):
+#     rand_target = torch.randint(
+#                 0, 9, target.size(),
+#                 dtype=target.dtype, device='cuda')
+#             rand_target = torch.remainder(target + rand_target + 1, 10)
+#             data_adv = self.attack(self.model, data_cpy, rand_target,
+#                                    avoid_target=False, scale_eps=False)
+
+#             for idx in range(len(data_adv_cpy)):
+#                 unnormalized = reverse_normalization(data_adv[idx])
+#                 transformed = applyTransforms(unnormalized.cpu().detach())
+#                 data_adv_cpy[idx] = transforms.functional.normalize(transformed.cpu(), IMAGENET_MEAN, IMAGENET_STD).cuda()
 
 class CIFAR10CEvaluator(BaseEvaluator):
     def __init__(self, corruption_type=None, corruption_name=None, corruption_level=None, **kwargs):
@@ -167,7 +278,7 @@ class CIFAR10CEvaluator(BaseEvaluator):
         self.corruption_name = corruption_name
         self.corruption_level = corruption_level
         super().__init__(**kwargs)
-    
+
     def _init_loaders(self):
         valdir = os.path.join(self.dataset_path, 'CIFAR-10-C')
         transform = transforms.Compose(
@@ -178,10 +289,10 @@ class CIFAR10CEvaluator(BaseEvaluator):
                                     corruption_name=self.corruption_name,
                                     corruption_level=self.corruption_level)
         self.val_sampler = torch.utils.data.SequentialSampler(self.val_dataset)
-        self.val_loader = torch.utils.data.DataLoader(
+        self.val_loader = [torch.utils.data.DataLoader(
                 self.val_dataset, batch_size=self.batch_size,
                 sampler=self.val_sampler, num_workers=1, pin_memory=True,
-                shuffle=False)
+                shuffle=False)]
 
 
 
@@ -383,7 +494,7 @@ def get_ckpt(FLAGS):
         return torch.load(os.path.join(wandb.run.dir, 'ckpt.pth'))
     else:
         raise ValueError('You must specify a wandb_run_id or a ckpt_path.')
-    
+
 def run(**flag_kwargs):
     FLAGS = FlagHolder()
     FLAGS.initialize(**flag_kwargs)
@@ -394,7 +505,7 @@ def run(**flag_kwargs):
         FLAGS._dict['step_size'] = FLAGS.step_size
     FLAGS.summary()
 
-    logger = init_logger(FLAGS.use_wandb, 'eval', FLAGS._dict)
+    #logger = init_logger(FLAGS.use_wandb, 'eval', FLAGS._dict)
 
     if FLAGS.dataset in ['cifar-10', 'cifar-10-c']:
         nb_classes = 10
@@ -419,13 +530,13 @@ def run(**flag_kwargs):
         Evaluator = CIFAR10Evaluator
     elif FLAGS.dataset == 'cifar-10-c':
         Evaluator = CIFAR10CEvaluator
-        
+
     evaluator = Evaluator(model=model, attack=attack, dataset=FLAGS.dataset,
                           dataset_path=FLAGS.dataset_path, nb_classes=nb_classes,
                           corruption_type=FLAGS.corruption_type, corruption_name=FLAGS.corruption_name,
                           corruption_level=FLAGS.corruption_level,
                           batch_size=FLAGS.batch_size, stride=FLAGS.class_downsample_factor,
-                          fp_all_reduce=FLAGS.use_fp16, logger=logger, tag=FLAGS.tag)
+                          fp_all_reduce=FLAGS.use_fp16, tag=FLAGS.tag) # REMOVED LOGGER
     evaluator.evaluate()
 
 
@@ -517,16 +628,77 @@ def greyScaleMix(img):
     img[:,:,i] = img_g
   return img
 
+#from PIL import Image
+# Code for saving image from https://stackoverflow.com/questions/2659312/how-do-i-convert-a-numpy-array-to-and-display-an-image
+# def applyTransforms(img):
+#     # Take in tensor, return tensor
+#   img = np.array(img)
+#   #print("Min:", np.min(img), "Max:", np.max(img))
+#   # id = str(img[0][0])
+#   # savedImage = Image.fromarray(img, 'RGB')
+#   # savedImage.save("sample_data/transform" + str(id) + str(0) + ".png")
+#   allTransforms = [[colorPrecisionReduction], [jpegNoise], [swirl], [fftPerturbation], [alterHSV, alterXYZ, alterLAB, alterYUV], [greyScaleMix, greyScalePartialMix, greyScaleMixTwoThirds, oneChannelPartialGrey], [gaussianBlur, chambolleDenoising, nonlocalMeansDenoising]]
+#   numTransforms = random.randint(0, 5)
+#   img = img / 255.0
+
+#   for i in range(numTransforms):
+#       transformGroup = random.choice(allTransforms)
+#       transform = random.choice(transformGroup)
+#       #transform = alterHSV
+
+#       img = transform(img)
+
+#       #savedImage = Image.fromarray(img, 'RGB')
+#       #savedImage.save("sample_data/transform" + str(id) + str(i + 1) + str(transform) + ".png")
+#       allTransforms.remove(transformGroup)
+
+#   img = img * 255.0
+#   img = np.swapaxes(img, 0, 2)
+#   return torch.from_numpy(img).float()
+
+
+
+
+# Below for original, non-working transforms
+# def applyTransforms(img):
+#   # print(type(img))
+#   img = np.array(img)
+#   # print(img.shape)
+#   # print(img)
+#   img = np.swapaxes(img, 0, 2)
+#   allTransforms = [[colorPrecisionReduction], [jpegNoise], [swirl], [fftPerturbation], [alterHSV, alterXYZ, alterLAB, alterYUV], [greyScaleMix, greyScalePartialMix, greyScaleMixTwoThirds, oneChannelPartialGrey], [gaussianBlur, chambolleDenoising, nonlocalMeansDenoising]]
+#   numTransforms = random.randint(0, 5)
+
+#   #print("Original.")
+#   #img = img / 255.0
+
+#   #for i in range(numTransforms):
+#   for i in range(numTransforms):
+#       transformGroup = random.choice(allTransforms)
+#       transform = random.choice(transformGroup)
+#       #transform = alterHSV
+
+#       img = transform(img)
+
+#       #savedImage = Image.fromarray(img, 'RGB')
+#       #savedImage.save("sample_data/transform" + str(id) + str(i + 1) + str(transform) + ".png")
+#       allTransforms.remove(transformGroup)
+
+#   return torch.from_numpy(np.swapaxes(img, 0, 2)).float()
+
+
+# Below for having applyTransforms in data-loading with RandomApply
+from PIL import Image
 def applyTransforms(img):
   img = np.array(img)
   allTransforms = [colorPrecisionReduction, jpegNoise, swirl, alterHSV, greyScaleMix]
 
+  img = img / 255.0
+
   for transform in allTransforms:
       img = transform(img)
-    
-  img = np.swapaxes(img, 0, 2)
-  return torch.from_numpy(img).float()
 
+  return torch.from_numpy(np.swapaxes(img, 0, 2)).float()
 
 
 
